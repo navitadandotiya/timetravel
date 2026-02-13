@@ -1,22 +1,35 @@
 package gateways
 
 import (
-    "database/sql"
-    "log"
+	"database/sql"
+	"log"
+	"os"
 
-    _ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-// ConnectDB opens a persistent SQLite database
-func ConnectDB(dbPath string) *sql.DB {
-    db, err := sql.Open("sqlite3", dbPath)
-    if err != nil {
-        log.Fatalf("Failed to open DB: %v", err)
-    }
+// ConnectDB opens a SQLite connection and ensures tables exist
+func ConnectDB(path string) *sql.DB {
+	// Create DB dir if missing
+	if _, err := os.Stat("db"); os.IsNotExist(err) {
+		os.Mkdir("db", os.ModePerm)
+	}
 
-    if err := db.Ping(); err != nil {
-        log.Fatalf("Failed to ping DB: %v", err)
-    }
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		log.Fatalf("failed to open SQLite DB: %v", err)
+	}
 
-    return db
+	// Run table creation statements
+	tableSQL, err := os.ReadFile("script/create_v2_tables.sql")
+	if err != nil {
+		log.Fatalf("failed to read create_v2_tables.sql: %v", err)
+	}
+
+	_, err = db.Exec(string(tableSQL))
+	if err != nil {
+		log.Fatalf("failed to create tables: %v", err)
+	}
+
+	return db
 }

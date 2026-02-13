@@ -7,8 +7,9 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
-	"github.com/rainbowmga/timetravel/entity"
 	"github.com/rainbowmga/timetravel/controller"
+	"github.com/rainbowmga/timetravel/entity"
+	"github.com/rainbowmga/timetravel/observability"
 )
 
 // POST /records/{id}
@@ -20,17 +21,16 @@ func (a *API) PostRecords(w http.ResponseWriter, r *http.Request) {
 	idNumber, err := strconv.ParseInt(id, 10, 32)
 
 	if err != nil || idNumber <= 0 {
-		err := writeError(w, "invalid id; id must be a positive number", http.StatusBadRequest)
-		logError(err)
+		observability.DefaultLogger.Warn("post_records invalid id", "id", id, "error", err)
+		_ = writeError(w, "invalid id; id must be a positive number", http.StatusBadRequest)
 		return
 	}
 
 	var body map[string]*string
 	err = json.NewDecoder(r.Body).Decode(&body)
-
 	if err != nil {
-		err := writeError(w, "invalid input; could not parse json", http.StatusBadRequest)
-		logError(err)
+		observability.DefaultLogger.Warn("post_records invalid JSON", "id", idNumber, "error", err)
+		_ = writeError(w, "invalid input; could not parse json", http.StatusBadRequest)
 		return
 	}
 
@@ -42,30 +42,28 @@ func (a *API) PostRecords(w http.ResponseWriter, r *http.Request) {
 
 	if !errors.Is(err, controller.ErrRecordDoesNotExist) { // record exists
 		record, err = a.records.UpdateRecord(ctx, int(idNumber), body)
+		if err == nil {
+			observability.DefaultLogger.Info("record_updated", "api", "v1", "id", idNumber)
+		}
 	} else { // record does not exist
-
-		// exclude the delete updates
 		recordMap := map[string]string{}
 		for key, value := range body {
 			if value != nil {
 				recordMap[key] = *value
 			}
 		}
-
-		record = entity.Record{
-			ID:   int(idNumber),
-			Data: recordMap,
-		}
+		record = entity.Record{ID: int(idNumber), Data: recordMap}
 		err = a.records.CreateRecord(ctx, record)
+		if err == nil {
+			observability.DefaultLogger.Info("record_created", "api", "v1", "id", idNumber)
+		}
 	}
 
 	if err != nil {
-		errInWriting := writeError(w, ErrInternal.Error(), http.StatusInternalServerError)
-		logError(err)
-		logError(errInWriting)
+		observability.DefaultLogger.Error("post_records failed", "id", idNumber, "error", err)
+		_ = writeError(w, ErrInternal.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = writeJSON(w, record, http.StatusOK)
-	logError(err)
+	_ = writeJSON(w, record, http.StatusOK)
 }

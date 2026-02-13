@@ -210,3 +210,75 @@ Creates or updates a record at the specified ID.
 
 {"id": 1, "data": {"status": "ok"}}
 ```
+
+### Developer Environment Setup
+
+We provide a script to install all prerequisites for a peer developer:
+```bash
+chmod +x setup_dev.sh
+./setup_dev.sh
+```
+
+This will install:
+
+
+Go (check version)
+
+SQLite
+
+jq for test scripts
+
+Git
+
+Go modules & dependencies (including github.com/mattn/go-sqlite3)
+
+
+
+### Project Structure (Step 1)
+
+```bash
+timetravel/
+├─ main.go
+├─ conf/
+│  └─ config.yaml           # config: DB path, ports, feature flags
+├─ entity/
+│  └─ models.go             # DB models / structs
+├─ controller/
+│  └─ record_controller.go  # business logic / orchestration
+├─ service/
+│  └─ record_service.go     # in-memory service / interface
+├─ gateways/
+│  └─ db.go                 # SQLite DB connection
+├─ handler/
+│  ├─ v1/
+│  │  └─ api.go             # HTTP handlers for v1
+│  └─ v2/
+│     └─ handlers.go         # v2 (future) time-travel endpoints
+├─ script/
+│  └─ create_tables.sql      # DB creation scripts
+├─ test/
+│  └─ test_v1.sh             # curl test scripts for Step 1
+├─ db/
+│  └─ timetravel.db           # SQLite DB file
+├─ go.mod
+└─ go.sum
+```
+
+### Running the Server
+
+### a. Create SQLite tables (Step 1):
+
+```bash
+sqlite3 ./db/timetravel.db < ./script/create_tables.sql
+```
+
+### b. Start the Go server:
+```bash
+go run main.go
+```
+
+### Run Test:
+```bash
+./test/test_v1.sh
+```
+
