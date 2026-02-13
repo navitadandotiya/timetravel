@@ -8,7 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/rainbowmga/timetravel/entity"
-	"github.com/rainbowmga/timetravel/service"
+	"github.com/rainbowmga/timetravel/controller"
 )
 
 // POST /records/{id}
@@ -40,7 +40,7 @@ func (a *API) PostRecords(w http.ResponseWriter, r *http.Request) {
 		int(idNumber),
 	)
 
-	if !errors.Is(err, service.ErrRecordDoesNotExist) { // record exists
+	if !errors.Is(err, controller.ErrRecordDoesNotExist) { // record exists
 		record, err = a.records.UpdateRecord(ctx, int(idNumber), body)
 	} else { // record does not exist
 

@@ -2,14 +2,14 @@ package api
 
 import (
 	"github.com/gorilla/mux"
-	"github.com/rainbowmga/timetravel/service"
+	"github.com/rainbowmga/timetravel/controller"
 )
 
 type API struct {
-	records service.RecordService
+	records controller.RecordService
 }
 
-func NewAPI(records service.RecordService) *API {
+func NewAPI(records controller.RecordService) *API {
 	return &API{records}
 }
 
