@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 	"time"
-
+	"os"
 	"github.com/gorilla/mux"
 	"github.com/rainbowmga/timetravel/api"
 	"github.com/rainbowmga/timetravel/service"
@@ -31,7 +31,12 @@ func main() {
 	})
 	api.CreateRoutes(apiRoute)
 
-	address := "127.0.0.1:8000"
+	port := os.Getenv("PORT")
+	if port == "" {
+    	port = "8000"
+	}
+
+	address := "127.0.0.1:"+port
 	srv := &http.Server{
 		Handler:      router,
 		Addr:         address,
