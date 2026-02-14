@@ -26,6 +26,8 @@ func (api *API) CreateRoutes(router *mux.Router) {
 	router.HandleFunc("/records/{policyholder_id}", api.UpsertRecord).Methods("POST")
 	router.HandleFunc("/records/{policyholder_id}", api.GetRecord).Methods("GET")
 	router.HandleFunc("/health", api.HealthCheck).Methods("POST")
+	router.HandleFunc("/records/{policyholder_id}/versions", api.ListVersions).Methods("GET")
+	router.HandleFunc("/records/{policyholder_id}/versions/{version}", api.GetVersion).Methods("GET")
 }
 
 // UpsertRecord creates or updates a record
@@ -109,4 +111,39 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 // Helper for error JSON
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
+}
+
+func (api *API) GetVersion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	id, _ := strconv.Atoi(vars["policyholder_id"])
+	version, _ := strconv.Atoi(vars["version"])
+
+	data, err := api.Controller.GetVersion(r.Context(), id, version)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"policyholder_id": id,
+		"version":         version,
+		"data":            data,
+	})
+}
+
+func (api *API) ListVersions(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, _ := strconv.Atoi(vars["policyholder_id"])
+
+	versions, err := api.Controller.ListVersions(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"policyholder_id": id,
+		"versions":        versions,
+	})
 }

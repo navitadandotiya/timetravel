@@ -1,49 +1,16 @@
-PRAGMA foreign_keys=off;
+PRAGMA foreign_keys = OFF;
+BEGIN TRANSACTION;
 
 --------------------------------------------------
--- 1️⃣ Rename old table
+-- MIGRATION VERSION TRACKING
 --------------------------------------------------
-DROP TABLE IF EXISTS policyholder_records_old;
-ALTER TABLE policyholder_records RENAME TO policyholder_records_old;
-
-
---------------------------------------------------
--- 5️⃣ Drop old table (optional, after verifying copy)
---------------------------------------------------
-DROP TABLE IF EXISTS policyholder_records;
-
----------------------------------------------------
--- POLICYHOLDER RECORD (LATEST STATE)
---------------------------------------------------
-CREATE TABLE IF NOT EXISTS policyholder_records (
-    record_id INTEGER PRIMARY KEY,
-    policyholder_id INTEGER,            -- add FK reference if needed
-    data TEXT NOT NULL,                 -- JSON blob
-    version INTEGER NOT NULL DEFAULT 1, -- current version
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-
 --------------------------------------------------
--- 4️⃣ Copy data from old table
---------------------------------------------------
--- Copy identity info
-INSERT INTO policyholder_records (record_id, policyholder_id, created_at)
-SELECT record_id, policyholder_id, created_at
-FROM policyholder_records_old;
-
-
---------------------------------------------------
--- 5️⃣ Drop old table (optional, after verifying copy)
---------------------------------------------------
-DROP TABLE policyholder_records_old;
-
-
-PRAGMA foreign_keys = ON;
-
---------------------------------------------------
--- POLICYHOLDER
+-- POLICYHOLDER (NEW)
 --------------------------------------------------
 CREATE TABLE IF NOT EXISTS policyholders (
     policyholder_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,21 +21,26 @@ CREATE TABLE IF NOT EXISTS policyholders (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+--------------------------------------------------
+-- EXTEND POLICYHOLDER RECORDS (V1 → V2)
+--------------------------------------------------
 
+--ALTER TABLE policyholder_records ADD COLUMN policyholder_id INTEGER;
+--ALTER TABLE policyholder_records ADD COLUMN version INTEGER DEFAULT 1;
 
 CREATE INDEX IF NOT EXISTS idx_records_version
 ON policyholder_records(record_id, version);
 
 --------------------------------------------------
--- AUDIT HISTORY (IMMUTABLE SNAPSHOTS)
+-- AUDIT HISTORY (VERSION SNAPSHOTS)
 --------------------------------------------------
 CREATE TABLE IF NOT EXISTS audit_history (
     audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_id INTEGER NOT NULL,
     version INTEGER NOT NULL,
-    data TEXT NOT NULL,                 -- snapshot JSON
+    data TEXT NOT NULL,
     changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    event_type TEXT NOT NULL,           -- create/update/delete
+    event_type TEXT NOT NULL,
     FOREIGN KEY(record_id) REFERENCES policyholder_records(record_id)
 );
 
@@ -79,36 +51,30 @@ CREATE INDEX IF NOT EXISTS idx_audit_time
 ON audit_history(record_id, changed_at);
 
 --------------------------------------------------
--- EVENT LOG (TRACEABILITY & DEBUGGING)
+-- EVENT LOG (TRACEABILITY)
 --------------------------------------------------
 CREATE TABLE IF NOT EXISTS event_logs (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_id INTEGER,
-    action TEXT NOT NULL,               -- create/update/delete/read
+    action TEXT NOT NULL,
     details TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_event_record
-ON event_logs(record_id);
-
 --------------------------------------------------
--- OBSERVABILITY METRICS (PLATFORM + BUSINESS)
+-- OBSERVABILITY METRICS
 --------------------------------------------------
 CREATE TABLE IF NOT EXISTS observability_metrics (
     metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    metric_type TEXT NOT NULL,   -- platform | business
+    metric_type TEXT NOT NULL,
     metric_name TEXT NOT NULL,
     value REAL,
     region TEXT,
     recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_metric_type
-ON observability_metrics(metric_type, metric_name);
-
 --------------------------------------------------
--- FEATURE FLAGS (GLOBAL ROLLOUT CONTROL)
+-- FEATURE FLAGS (ROLL OUT CONTROL)
 --------------------------------------------------
 CREATE TABLE IF NOT EXISTS feature_flags (
     flag_key TEXT PRIMARY KEY,
@@ -126,3 +92,12 @@ CREATE TABLE IF NOT EXISTS api_version_config (
     rollout_percentage INTEGER DEFAULT 100,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+--------------------------------------------------
+-- RECORD MIGRATION APPLIED
+--------------------------------------------------
+INSERT OR IGNORE INTO schema_migrations(version)
+VALUES ('001_time_travel_v2');
+
+COMMIT;
+PRAGMA foreign_keys = ON;

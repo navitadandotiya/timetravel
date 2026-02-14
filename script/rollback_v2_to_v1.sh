@@ -1,0 +1,1 @@
+sqlite3 db/timetravel.db < rollback_create_v2_tables.sql

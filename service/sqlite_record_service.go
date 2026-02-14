@@ -135,3 +135,53 @@ func (s *SQLiteRecordService) Get(policyholderID int64) (*entity.PolicyholderRec
 		UpdatedAt: updatedTime,
 	}, nil
 }
+
+// GetVersion returns a specific historical version
+func (s *SQLiteRecordService) GetVersion(policyholderID int64, version int) (map[string]string, error) {
+	row := s.db.QueryRow(`
+		SELECT ah.data
+		FROM audit_history ah
+		JOIN policyholder_records pr ON pr.record_id = ah.record_id
+		WHERE pr.policyholder_id = ?
+		AND ah.version = ?`,
+		policyholderID, version,
+	)
+
+	var jsonData string
+	if err := row.Scan(&jsonData); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrRecordDoesNotExist
+		}
+		return nil, err
+	}
+
+	var data map[string]string
+	json.Unmarshal([]byte(jsonData), &data)
+
+	return data, nil
+}
+
+// ListVersions returns all versions for a record
+func (s *SQLiteRecordService) ListVersions(policyholderID int64) ([]int, error) {
+	rows, err := s.db.Query(`
+		SELECT ah.version
+		FROM audit_history ah
+		JOIN policyholder_records pr ON pr.record_id = ah.record_id
+		WHERE pr.policyholder_id = ?
+		ORDER BY ah.version`,
+		policyholderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var versions []int
+	for rows.Next() {
+		var v int
+		rows.Scan(&v)
+		versions = append(versions, v)
+	}
+
+	return versions, nil
+}

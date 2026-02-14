@@ -108,3 +108,19 @@ func (c *SQLiteRecordController) UpdateRecord(
 
 	return *updated, nil
 }
+
+// GetVersion returns a historical version
+func (c *SQLiteRecordController) GetVersion(ctx context.Context, id int, version int) (map[string]string, error) {
+	if id <= 0 {
+		return nil, ErrRecordIDInvalid
+	}
+	return c.service.GetVersion(int64(id), version)
+}
+
+// ListVersions returns all versions
+func (c *SQLiteRecordController) ListVersions(ctx context.Context, id int) ([]int, error) {
+	if id <= 0 {
+		return nil, ErrRecordIDInvalid
+	}
+	return c.service.ListVersions(int64(id))
+}

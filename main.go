@@ -35,7 +35,7 @@ func main() {
 
 	// --- Run migrations only if enabled ---
     if cfg.Database.Migrations.RunOnStartup {
-        if err := gateways.RunMigrations(db); err != nil {
+        if err := gateways.RunMigrations(db,"./script/migrations"); err != nil {
             log.Fatalf("migration failed: %v", err)
         }
         log.Println("migrations completed!")
