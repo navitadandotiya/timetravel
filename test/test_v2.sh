@@ -28,3 +28,4 @@ curl -s -X GET "$BASE_URL/records/9999" | jq
 echo -e "\n"
 
 echo "=== Test Completed ==="
+

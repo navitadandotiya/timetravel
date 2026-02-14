@@ -10,12 +10,12 @@ CREATE TABLE IF NOT EXISTS policyholders (
 
 -- Policyholder Records table
 CREATE TABLE IF NOT EXISTS policyholder_records (
-    record_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    policyholder_id INTEGER NOT NULL,
-    data TEXT NOT NULL, -- JSON stored as TEXT
+    record_id INTEGER PRIMARY KEY,
+    policyholder_id INTEGER,            -- add FK reference if needed
+    data TEXT NOT NULL,                 -- JSON blob
+    version INTEGER NOT NULL DEFAULT 1, -- current version
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (policyholder_id) REFERENCES policyholders(policyholder_id)
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Audit history table

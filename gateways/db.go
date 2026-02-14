@@ -33,3 +33,12 @@ func ConnectDB(path string) *sql.DB {
 
 	return db
 }
+
+func RunMigrations(db *sql.DB) error {
+    script, err := os.ReadFile("script/001_create_v2_tables.sql")
+    if err != nil {
+        return err
+    }
+    _, err = db.Exec(string(script))
+    return err
+}

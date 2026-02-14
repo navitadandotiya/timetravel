@@ -14,7 +14,7 @@ var (
 	ErrRecordDoesNotExist = errors.New("record does not exist")
 )
 
-// SQLiteRecordService implements v2 persistent storage
+// SQLiteRecordService implements v2 persistent storage with versioning
 type SQLiteRecordService struct {
 	db *sql.DB
 }
@@ -25,67 +25,68 @@ func NewSQLiteRecordService(dbPath string) (*SQLiteRecordService, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Enforce foreign keys
+	_, _ = db.Exec("PRAGMA foreign_keys = ON;")
 	return &SQLiteRecordService{db: db}, nil
 }
 
-// CreateOrUpdate inserts or updates a policyholder record and writes audit + event log
+// CreateOrUpdate inserts or updates a policyholder record, increments version, writes audit + event log
 func (s *SQLiteRecordService) CreateOrUpdate(policyholderID int64, data map[string]string) (*entity.PolicyholderRecord, error) {
-	// Marshal data to JSON
-	dataJSON, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
+	dataJSON, _ := json.Marshal(data)
+	now := time.Now().UTC()
 
 	// Check if record exists
 	var recordID int64
-	row := s.db.QueryRow("SELECT record_id FROM policyholder_records WHERE policyholder_id = ?", policyholderID)
-	err = row.Scan(&recordID)
-
-	now := time.Now().UTC()
+	var currentVersion int
+	row := s.db.QueryRow("SELECT record_id, version FROM policyholder_records WHERE policyholder_id = ?", policyholderID)
+	err := row.Scan(&recordID, &currentVersion)
 
 	if err == sql.ErrNoRows {
 		// Insert new record
 		res, err := s.db.Exec(`
-			INSERT INTO policyholder_records (policyholder_id, data, created_at, updated_at)
-			VALUES (?, ?, ?, ?)`,
-			policyholderID, string(dataJSON), now, now)
+			INSERT INTO policyholder_records (policyholder_id, data, version, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?)`,
+			policyholderID, string(dataJSON), 1, now, now)
 		if err != nil {
 			return nil, err
 		}
 		recordID, _ = res.LastInsertId()
+		currentVersion = 1
 
-		// Write audit history
+		// Audit
 		_, _ = s.db.Exec(`
-			INSERT INTO audit_history (record_id, data, changed_at, event_type)
-			VALUES (?, ?, ?, ?)`,
-			recordID, string(dataJSON), now, "create")
+			INSERT INTO audit_history (record_id, version, data, changed_at, event_type)
+			VALUES (?, ?, ?, ?, ?)`,
+			recordID, currentVersion, string(dataJSON), now, "create")
 
-		// Write event log
+		// Event log
 		_, _ = s.db.Exec(`
-			INSERT INTO event_log (record_id, action, timestamp, details)
+			INSERT INTO event_logs (record_id, action, timestamp, details)
 			VALUES (?, ?, ?, ?)`,
 			recordID, "create", now, string(dataJSON))
 
 	} else if err == nil {
-		// Update existing record
+		// Update existing record: increment version
+		currentVersion += 1
 		_, err = s.db.Exec(`
 			UPDATE policyholder_records
-			SET data = ?, updated_at = ?
+			SET data = ?, version = ?, updated_at = ?
 			WHERE record_id = ?`,
-			string(dataJSON), now, recordID)
+			string(dataJSON), currentVersion, now, recordID)
 		if err != nil {
 			return nil, err
 		}
 
-		// Write audit history
+		// Audit
 		_, _ = s.db.Exec(`
-			INSERT INTO audit_history (record_id, data, changed_at, event_type)
-			VALUES (?, ?, ?, ?)`,
-			recordID, string(dataJSON), now, "update")
+			INSERT INTO audit_history (record_id, version, data, changed_at, event_type)
+			VALUES (?, ?, ?, ?, ?)`,
+			recordID, currentVersion, string(dataJSON), now, "update")
 
-		// Write event log
+		// Event log
 		_, _ = s.db.Exec(`
-			INSERT INTO event_log (record_id, action, timestamp, details)
+			INSERT INTO event_logs (record_id, action, timestamp, details)
 			VALUES (?, ?, ?, ?)`,
 			recordID, "update", now, string(dataJSON))
 	} else {
@@ -95,6 +96,7 @@ func (s *SQLiteRecordService) CreateOrUpdate(policyholderID int64, data map[stri
 	return &entity.PolicyholderRecord{
 		ID:        recordID,
 		Data:      data,
+		Version:   currentVersion,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}, nil
@@ -102,12 +104,17 @@ func (s *SQLiteRecordService) CreateOrUpdate(policyholderID int64, data map[stri
 
 // Get retrieves a record by policyholder ID
 func (s *SQLiteRecordService) Get(policyholderID int64) (*entity.PolicyholderRecord, error) {
-	row := s.db.QueryRow("SELECT record_id, data, created_at, updated_at FROM policyholder_records WHERE policyholder_id = ?", policyholderID)
+	row := s.db.QueryRow(`
+		SELECT record_id, data, version, created_at, updated_at
+		FROM policyholder_records
+		WHERE policyholder_id = ?`, policyholderID)
+
 	var recordID int64
 	var dataJSON string
+	var version int
 	var createdAt, updatedAt string
 
-	err := row.Scan(&recordID, &dataJSON, &createdAt, &updatedAt)
+	err := row.Scan(&recordID, &dataJSON, &version, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, ErrRecordDoesNotExist
 	} else if err != nil {
@@ -123,6 +130,7 @@ func (s *SQLiteRecordService) Get(policyholderID int64) (*entity.PolicyholderRec
 	return &entity.PolicyholderRecord{
 		ID:        recordID,
 		Data:      data,
+		Version:   version,
 		CreatedAt: createdTime,
 		UpdatedAt: updatedTime,
 	}, nil

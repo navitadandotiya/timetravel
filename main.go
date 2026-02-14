@@ -13,6 +13,7 @@ import (
 	apiV1 "github.com/rainbowmga/timetravel/handler/v1"
 	apiV2 "github.com/rainbowmga/timetravel/handler/v2"
 	"github.com/rainbowmga/timetravel/observability"
+	"github.com/rainbowmga/timetravel/conf"
 )
 
 // logError logs all non-nil errors
@@ -23,11 +24,24 @@ func logError(err error) {
 }
 
 func main() {
+	 // Load config
+	 cfg := conf.LoadConfig("conf/config.yaml")
+
 	// --- Step 1: Initialize SQLite DB for durability ---
-	dbPath := "./db/timetravel.db"
+	dbPath := cfg.Database.Path
 	db := gateways.ConnectDB(dbPath)
 	defer db.Close()
 	observability.DefaultLogger.Info("SQLite DB connected", "path", dbPath)
+
+	// --- Run migrations only if enabled ---
+    if cfg.Database.Migrations.RunOnStartup {
+        if err := gateways.RunMigrations(db); err != nil {
+            log.Fatalf("migration failed: %v", err)
+        }
+        log.Println("migrations completed!")
+    } else {
+        log.Println("migrations skipped (run_on_startup=false)")
+    }
 
 	// --- Initialize router ---
 	router := mux.NewRouter()
@@ -63,7 +77,7 @@ func main() {
 	}).Methods("POST")
 
 	// v2 SQLite-backed controller
-	v2Controller, err := controller.NewSQLiteRecordService(dbPath)
+	v2Controller, err := controller.NewSQLiteRecordController(dbPath)
 	if err != nil {
 		log.Fatalf("failed to initialize v2 controller: %v", err)
 	}

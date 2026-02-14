@@ -1,1 +1,6 @@
 # configuration files (DB path, API ports, feature flags)
+
+database:
+  path: ./db/timetravel.db
+  migrations:
+    run_on_startup: false
