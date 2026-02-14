@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/rainbowmga/timetravel/conf"
 	"github.com/rainbowmga/timetravel/controller"
 	"github.com/rainbowmga/timetravel/gateways"
 	apiV1 "github.com/rainbowmga/timetravel/handler/v1"
 	apiV2 "github.com/rainbowmga/timetravel/handler/v2"
 	"github.com/rainbowmga/timetravel/observability"
-	"github.com/rainbowmga/timetravel/conf"
 )
 
 // logError logs all non-nil errors
@@ -24,8 +24,8 @@ func logError(err error) {
 }
 
 func main() {
-	 // Load config
-	 cfg := conf.LoadConfig("conf/config.yaml")
+	// Load config
+	cfg := conf.LoadConfig("conf/config.yaml")
 
 	// --- Step 1: Initialize SQLite DB for durability ---
 	dbPath := cfg.Database.Path
@@ -34,19 +34,19 @@ func main() {
 	observability.DefaultLogger.Info("SQLite DB connected", "path", dbPath)
 
 	// --- Run migrations only if enabled ---
-    if cfg.Database.Migrations.RunOnStartup {
+	if cfg.Database.Migrations.RunOnStartup {
         if err := gateways.RunMigrations(db,"./script/migrations"); err != nil {
-            log.Fatalf("migration failed: %v", err)
-        }
-        log.Println("migrations completed!")
-    } else {
-        log.Println("migrations skipped (run_on_startup=false)")
-    }
+			log.Fatalf("migration failed: %v", err)
+		}
+		log.Println("migrations completed!")
+	} else {
+		log.Println("migrations skipped (run_on_startup=false)")
+	}
 
 	// --- Initialize router ---
 	router := mux.NewRouter()
 
-	// Observability: metrics endpoint (no logging middleware to avoid noise)
+	// --- Observability: metrics endpoint ---
 	router.Handle("/metrics", observability.MetricsHandler()).Methods("GET")
 
 	// ----------------------
@@ -66,22 +66,24 @@ func main() {
 	v1Handler.CreateRoutes(v1Route)
 
 	// ----------------------
-	// v2: SQLite persistent service
+	// v2: SQLite persistent service + feature flags
 	// ----------------------
 	v2Route := router.PathPrefix("/api/v2").Subrouter()
-
-	// v2 health check
-	v2Route.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		err := json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-		logError(err)
-	}).Methods("POST")
-
-	// v2 SQLite-backed controller
+	
+	// SQLite-backed v2 controller
 	v2Controller, err := controller.NewSQLiteRecordController(dbPath)
 	if err != nil {
 		log.Fatalf("failed to initialize v2 controller: %v", err)
 	}
-	v2Handler := apiV2.NewAPI(v2Controller)
+
+	// FeatureFlag service
+	flagService, err := controller.NewFeatureFlagController(dbPath)
+	if err != nil {
+		log.Fatalf("failed to initialize feature flag service: %v", err)
+	}
+
+	// Initialize v2 API
+	v2Handler := apiV2.NewAPI(v2Controller, flagService)
 	v2Handler.CreateRoutes(v2Route)
 
 	// ----------------------

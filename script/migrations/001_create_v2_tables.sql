@@ -101,3 +101,17 @@ VALUES ('001_time_travel_v2');
 
 COMMIT;
 PRAGMA foreign_keys = ON;
+
+
+INSERT INTO feature_flags(flag_key, enabled, description, updated_at)
+VALUES
+('enable_v2_api', 1, 'Enable version 2 API', CURRENT_TIMESTAMP),
+('enable_audit_logging', 1, 'Audit history logging', CURRENT_TIMESTAMP),
+('enable_metrics', 1, 'Observability metrics', CURRENT_TIMESTAMP)
+ON CONFLICT(flag_key)
+DO UPDATE SET
+    enabled = excluded.enabled,
+    description = excluded.description,
+    updated_at = CURRENT_TIMESTAMP;
+
+--verification SELECT enabled FROM feature_flags WHERE flag_key = 'enable_v2_api';
