@@ -3,15 +3,21 @@ package service
 import (
 	"database/sql"
 	"sync"
+	"hash/fnv"
 	"github.com/rainbowmga/timetravel/observability"
 )
 
 type FeatureFlagService struct {
 	db   *sql.DB
 	mu   sync.RWMutex
-	cache map[string]bool
+	cache map[string]FeatureFlag
 }
 
+type FeatureFlag struct {
+	Key               string
+	Enabled           bool
+	RolloutPercentage int
+}
 
 // NewFeatureFlagService initializes and loads flags into memory
 func NewFeatureFlagService(dbPath string) (*FeatureFlagService, error) {
@@ -25,48 +31,70 @@ func NewFeatureFlagService(dbPath string) (*FeatureFlagService, error) {
 
 	s := &FeatureFlagService{
 		db:    db,
-		cache: make(map[string]bool),
+		cache: make(map[string]FeatureFlag),
 	}
-	if err := s.reload(); err != nil {
+	if err := s.Refresh(); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
 // reload loads flags from DB into memory
-func (s *FeatureFlagService) reload() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	rows, err := s.db.Query("SELECT flag_key, enabled FROM feature_flags")
+func (s *FeatureFlagService) Refresh() error {
+	rows, err := s.db.Query(`
+		SELECT flag_key, enabled, rollout_percentage
+		FROM feature_flags`)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	s.cache = make(map[string]bool)
+	tmp := make(map[string]FeatureFlag)
+
 	for rows.Next() {
-		var key string
-		var enabled bool
-		if err := rows.Scan(&key, &enabled); err != nil {
+		var f FeatureFlag
+		if err := rows.Scan(&f.Key, &f.Enabled, &f.RolloutPercentage); err != nil {
 			return err
 		}
-		s.cache[key] = enabled
+		tmp[f.Key] = f
 	}
+
+	s.mu.Lock()
+	s.cache = tmp
+	s.mu.Unlock()
+
+	observability.DefaultLogger.Info("Refresh ", s.cache["enable_v2_api"])
 	return nil
 }
 
 // IsEnabled checks if a flag is enabled
-func (s *FeatureFlagService) IsEnabled(flag string) bool {
+func (s *FeatureFlagService) IsEnabled(flagKey string, userID int64) bool {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	observability.DefaultLogger.Info("IsEnabled ",flag, s.cache[flag])
-	return s.cache[flag]
+	flag, ok := s.cache[flagKey]
+	s.mu.RUnlock()
+
+	if !ok || !flag.Enabled {
+		observability.FlagEvaluated(flagKey, false)
+		return false
+	}
+
+	// 100% rollout
+	if flag.RolloutPercentage >= 100 {
+		observability.FlagEvaluated(flagKey, true)
+		return true
+	}
+
+	// deterministic hash
+	h := fnv.New32a()
+	h.Write([]byte(string(userID)))
+	value := h.Sum32() % 100
+
+	enabled := int(value) < flag.RolloutPercentage
+
+	observability.FlagEvaluated(flagKey, enabled)
+	observability.DefaultLogger.Info("IsEnabled ", flagKey, s.cache[flagKey])
+	return enabled
 }
 
-// Refresh forces reload from DB at runtime
-func (s *FeatureFlagService) Refresh() error {
-	observability.DefaultLogger.Info("Refresh ...... ")
-	observability.DefaultLogger.Info("Refresh ", s.cache["enable_v2_api"])
-	return s.reload()
-}
+
+

@@ -67,6 +67,7 @@ type FeatureFlag struct {
 	Key         string    `db:"flag_key" json:"flag_key"`
 	Enabled     bool      `db:"enabled" json:"enabled"`
 	Description string    `db:"description" json:"description"`
+	RolloutPercentage int `db:"description" json:"rollout_percentage"`
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
 }
 

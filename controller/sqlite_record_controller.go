@@ -6,6 +6,7 @@ import (
 
 	"github.com/rainbowmga/timetravel/entity"
 	"github.com/rainbowmga/timetravel/service"
+	"github.com/rainbowmga/timetravel/observability"
 )
 
 type SQLiteRecordController struct {
@@ -61,6 +62,7 @@ func (c *SQLiteRecordController) UpsertRecord(
 
 	rec, err := c.service.CreateOrUpdate(policyholderID, data)
 	if err != nil {
+		observability.DefaultLogger.Error(" CreateOrUpdate error %v",err);
 		return entity.PolicyholderRecord{}, err
 	}
 
@@ -103,6 +105,7 @@ func (c *SQLiteRecordController) UpdateRecord(
 
 	updated, err := c.service.CreateOrUpdate(int64(id), rec.Data)
 	if err != nil {
+		observability.DefaultLogger.Error(" updated error %v",err);
 		return entity.PolicyholderRecord{}, err
 	}
 

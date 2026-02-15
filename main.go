@@ -42,6 +42,13 @@ func main() {
 	} else {
 		log.Println("migrations skipped (run_on_startup=false)")
 	}
+	// After DB is initialized
+	metricsRepo, err := gateways.NewMetricsRepository(dbPath)
+	if err != nil {
+		log.Fatalf("failed to initialize metrics repo: %v", err)
+	}
+
+	observability.InitMetricsRepository(metricsRepo)
 
 	// --- Initialize router ---
 	router := mux.NewRouter()
@@ -69,6 +76,11 @@ func main() {
 	// v2: SQLite persistent service + feature flags
 	// ----------------------
 	v2Route := router.PathPrefix("/api/v2").Subrouter()
+
+	// require user identity for v2
+	v2Route.Use(observability.RequireUserContext)
+	v2Route.Use(observability.LoggingAndMetrics)
+
 	
 	// SQLite-backed v2 controller
 	v2Controller, err := controller.NewSQLiteRecordController(dbPath)
@@ -95,11 +107,9 @@ func main() {
 	}
 
 	address := "127.0.0.1:" + port
-	// Wrap with logging and metrics middleware
-	handler := observability.LoggingAndMetrics(router)
 
 	srv := &http.Server{
-		Handler:      handler,
+		Handler:      router,
 		Addr:         address,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,

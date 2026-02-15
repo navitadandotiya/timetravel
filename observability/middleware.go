@@ -4,6 +4,10 @@ import (
 	"net/http"
 	"regexp"
 	"time"
+	"context"
+	"strconv"
+
+	"github.com/rainbowmga/timetravel/common"
 )
 
 // pathForMetrics normalizes path for metrics (replaces numeric segments to limit cardinality)
@@ -53,5 +57,26 @@ func LoggingAndMetrics(next http.Handler) http.Handler {
 			"duration_ms", duration.Milliseconds(),
 			"remote", r.RemoteAddr,
 		)
+	})
+}
+
+func RequireUserContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userHeader := r.Header.Get("X-User-ID")
+		if userHeader == "" {
+			http.Error(w, "missing X-User-ID header", http.StatusUnauthorized)
+			DefaultLogger.Error("missing X-User-ID header")
+			return
+		}
+
+		userID, err := strconv.ParseInt(userHeader, 10, 64)
+		if err != nil || userID <= 0 {
+			DefaultLogger.Error("invalid X-User-ID header")
+			http.Error(w, "invalid X-User-ID header", http.StatusBadRequest)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), common.UserIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

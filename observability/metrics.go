@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rainbowmga/timetravel/gateways"
 )
 
 var (
@@ -29,16 +30,57 @@ var (
 		},
 		[]string{"method", "path"},
 	)
+
+	// FeatureFlagEvaluations
+	FlagEvaluations = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "feature_flag_evaluations_total",
+			Help: "Total feature flag evaluations",
+		},
+		[]string{"flag", "enabled"},
+	)
 )
+
+// Handler returns the Prometheus /metrics handler
+var metricsRepo *gateways.MetricsRepository
+
+func MetricsHandler() http.Handler {
+	return promhttp.Handler()
+}
+
+func InitMetricsRepository(repo *gateways.MetricsRepository) {
+	metricsRepo = repo
+}
+
+
 
 // RecordRequest increments request count and observes duration
 func RecordRequest(method, path string, status int, duration time.Duration) {
 	statusStr := strconv.Itoa(status)
 	HTTPRequestTotal.WithLabelValues(method, path, statusStr).Inc()
 	HTTPRequestDurationSeconds.WithLabelValues(method, path).Observe(duration.Seconds())
+	// Persist to DB
+	if metricsRepo != nil {
+		_ = metricsRepo.InsertMetric(
+			"platform",
+			"http_requests_total",
+			1,
+			"us-east-1", // you can make region dynamic
+		)
+
+		_ = metricsRepo.InsertMetric(
+			"platform",
+			"http_request_duration_seconds",
+			duration.Seconds(),
+			"us-east-1",
+		)
+	}
 }
 
-// Handler returns the Prometheus /metrics handler
-func MetricsHandler() http.Handler {
-	return promhttp.Handler()
+func FlagEvaluated(flag string, enabled bool) {
+	state := "false"
+	if enabled {
+		state = "true"
+	}
+	FlagEvaluations.WithLabelValues(flag, state).Inc()
 }

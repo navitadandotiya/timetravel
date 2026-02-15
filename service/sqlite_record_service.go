@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -33,63 +34,109 @@ func NewSQLiteRecordService(dbPath string) (*SQLiteRecordService, error) {
 
 // CreateOrUpdate inserts or updates a policyholder record, increments version, writes audit + event log
 func (s *SQLiteRecordService) CreateOrUpdate(policyholderID int64, data map[string]string) (*entity.PolicyholderRecord, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	dataJSON, _ := json.Marshal(data)
 	now := time.Now().UTC()
 
-	// Check if record exists
+	// --- Step 0: Ensure policyholder exists ---
+	_, err = tx.Exec(`
+		INSERT OR IGNORE INTO policyholders (policyholder_id, name)
+		VALUES (?, ?)`, policyholderID, data["name"])
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure policyholder exists: %w", err)
+	}
+
+	// --- Step 1: Check if record exists ---
 	var recordID int64
 	var currentVersion int
-	row := s.db.QueryRow("SELECT record_id, version FROM policyholder_records WHERE policyholder_id = ?", policyholderID)
-	err := row.Scan(&recordID, &currentVersion)
+	row := tx.QueryRow(`
+		SELECT record_id, version
+		FROM policyholder_records
+		WHERE policyholder_id = ?`, policyholderID)
+	err = row.Scan(&recordID, &currentVersion)
 
 	if err == sql.ErrNoRows {
 		// Insert new record
-		res, err := s.db.Exec(`
-			INSERT INTO policyholder_records (policyholder_id, data, version, created_at, updated_at)
+		res, err := tx.Exec(`
+			INSERT INTO policyholder_records 
+			(policyholder_id, data, version, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?)`,
-			policyholderID, string(dataJSON), 1, now, now)
+			policyholderID, string(dataJSON), 1, now, now,
+		)
 		if err != nil {
 			return nil, err
 		}
+
 		recordID, _ = res.LastInsertId()
 		currentVersion = 1
 
-		// Audit
-		_, _ = s.db.Exec(`
-			INSERT INTO audit_history (record_id, version, data, changed_at, event_type)
+		// Insert audit history
+		_, err = tx.Exec(`
+			INSERT INTO audit_history 
+			(record_id, version, data, changed_at, event_type)
 			VALUES (?, ?, ?, ?, ?)`,
-			recordID, currentVersion, string(dataJSON), now, "create")
-
-		// Event log
-		_, _ = s.db.Exec(`
-			INSERT INTO event_logs (record_id, action, timestamp, details)
-			VALUES (?, ?, ?, ?)`,
-			recordID, "create", now, string(dataJSON))
-
-	} else if err == nil {
-		// Update existing record: increment version
-		currentVersion += 1
-		_, err = s.db.Exec(`
-			UPDATE policyholder_records
-			SET data = ?, version = ?, updated_at = ?
-			WHERE record_id = ?`,
-			string(dataJSON), currentVersion, now, recordID)
+			recordID, currentVersion, string(dataJSON), now, "create",
+		)
 		if err != nil {
 			return nil, err
 		}
 
-		// Audit
-		_, _ = s.db.Exec(`
-			INSERT INTO audit_history (record_id, version, data, changed_at, event_type)
-			VALUES (?, ?, ?, ?, ?)`,
-			recordID, currentVersion, string(dataJSON), now, "update")
-
-		// Event log
-		_, _ = s.db.Exec(`
-			INSERT INTO event_logs (record_id, action, timestamp, details)
+		// Insert event log
+		_, err = tx.Exec(`
+			INSERT INTO event_logs 
+			(record_id, action, timestamp, details)
 			VALUES (?, ?, ?, ?)`,
-			recordID, "update", now, string(dataJSON))
+			recordID, "create", now, string(dataJSON),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+	} else if err == nil {
+		// Update existing record
+		currentVersion++
+		_, err = tx.Exec(`
+			UPDATE policyholder_records
+			SET data = ?, version = ?, updated_at = ?
+			WHERE record_id = ?`,
+			string(dataJSON), currentVersion, now, recordID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Insert audit history
+		_, err = tx.Exec(`
+			INSERT INTO audit_history 
+			(record_id, version, data, changed_at, event_type)
+			VALUES (?, ?, ?, ?, ?)`,
+			recordID, currentVersion, string(dataJSON), now, "update",
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Insert event log
+		_, err = tx.Exec(`
+			INSERT INTO event_logs 
+			(record_id, action, timestamp, details)
+			VALUES (?, ?, ?, ?)`,
+			recordID, "update", now, string(dataJSON),
+		)
+		if err != nil {
+			return nil, err
+		}
+
 	} else {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -156,7 +203,7 @@ func (s *SQLiteRecordService) GetVersion(policyholderID int64, version int) (map
 	}
 
 	var data map[string]string
-	json.Unmarshal([]byte(jsonData), &data)
+	_ = json.Unmarshal([]byte(jsonData), &data)
 
 	return data, nil
 }

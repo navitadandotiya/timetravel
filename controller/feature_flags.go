@@ -2,6 +2,9 @@ package controller
 
 import (
 	"github.com/rainbowmga/timetravel/service"
+	"github.com/rainbowmga/timetravel/common"
+	"context"
+	"github.com/rainbowmga/timetravel/observability"
 )
 
 // FeatureFlagController handles runtime feature flags
@@ -23,8 +26,13 @@ func NewFeatureFlagController(dbPath string) (*FeatureFlagController, error) {
 
 
 // IsEnabled returns true if the flag is enabled
-func (c *FeatureFlagController) IsEnabled(flag string) bool {
-	return c.service.IsEnabled(flag);
+func (c *FeatureFlagController) IsEnabled(ctx context.Context, flag string) bool {
+	userID, ok := common.GetUserID(ctx)
+	if !ok {
+		observability.DefaultLogger.Error("IsEnabled failed to fetch context error")
+		return false
+	}
+	return c.service.IsEnabled(flag,userID);
 }
 
 // Refresh reloads flags from the DB at runtime

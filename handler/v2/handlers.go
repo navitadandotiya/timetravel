@@ -36,7 +36,7 @@ func (api *API) CreateRoutes(router *mux.Router) {
 // UpsertRecord creates or updates a record
 func (api *API) UpsertRecord(w http.ResponseWriter, r *http.Request) {
 	// Feature flag check: enable v2 record logic
-	if !api.Flags.IsEnabled("enable_v2_api") {
+	if !api.Flags.IsEnabled(r.Context(),"enable_v2_api") {
 		respondError(w, http.StatusForbidden, "enable_v2_api flag is disabled")
 		return
 	}
@@ -76,7 +76,7 @@ func (api *API) UpsertRecord(w http.ResponseWriter, r *http.Request) {
 // GetRecord retrieves a policyholder record
 func (api *API) GetRecord(w http.ResponseWriter, r *http.Request) {
 	// Feature flag check: enable v2 record logic
-	if !api.Flags.IsEnabled("enable_v2_api") {
+	if !api.Flags.IsEnabled(r.Context(),"enable_v2_api") {
 		respondError(w, http.StatusForbidden, "enable_v2_api flag is disabled")
 		return
 	}
@@ -122,7 +122,7 @@ func (api *API) RefreshFlags(w http.ResponseWriter, r *http.Request) {
 // POST /api/v2/health
 func (api *API) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	// Feature flag check: enable v2 record logic
-	if !api.Flags.IsEnabled("enable_v2_api") {
+	if !api.Flags.IsEnabled(r.Context(),"enable_v2_api") {
 		respondError(w, http.StatusForbidden, "enable_v2_api flag is disabled")
 	}else{
 		respondJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -143,7 +143,7 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 func (api *API) GetVersion(w http.ResponseWriter, r *http.Request) {
 	// Feature flag check: enable v2 record logic
-	if !api.Flags.IsEnabled("enable_v2_api") {
+	if !api.Flags.IsEnabled(r.Context(),"enable_v2_api") {
 		respondError(w, http.StatusForbidden, "enable_v2_api flag is disabled")
 		return
 	}
@@ -168,7 +168,7 @@ func (api *API) GetVersion(w http.ResponseWriter, r *http.Request) {
 
 func (api *API) ListVersions(w http.ResponseWriter, r *http.Request) {
 	// Feature flag check: enable v2 record logic
-	if !api.Flags.IsEnabled("enable_v2_api") {
+	if !api.Flags.IsEnabled(r.Context(),"enable_v2_api") {
 		respondError(w, http.StatusForbidden, "enable_v2_api flag is disabled")
 		return
 	}

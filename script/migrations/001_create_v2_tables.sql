@@ -80,8 +80,10 @@ CREATE TABLE IF NOT EXISTS feature_flags (
     flag_key TEXT PRIMARY KEY,
     enabled BOOLEAN NOT NULL,
     description TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    rollout_percentage INTEGER DEFAULT 100
 );
+
 
 --------------------------------------------------
 -- API VERSION CONFIGURATION
