@@ -1,112 +1,32 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/rainbowmga/timetravel/app"
 	"github.com/rainbowmga/timetravel/conf"
-	"github.com/rainbowmga/timetravel/controller"
-	"github.com/rainbowmga/timetravel/gateways"
-	apiV1 "github.com/rainbowmga/timetravel/handler/v1"
-	apiV2 "github.com/rainbowmga/timetravel/handler/v2"
 	"github.com/rainbowmga/timetravel/observability"
 )
 
-// logError logs all non-nil errors
-func logError(err error) {
-	if err != nil {
-		log.Printf("error: %v", err)
-	}
-}
-
-func main() {
-	// Load config
-	cfg := conf.LoadConfig("conf/config.yaml")
-
-	// --- Step 1: Initialize SQLite DB for durability ---
+// RunServer starts the HTTP server and returns an error instead of exiting
+func RunServer(configPath string, envPort string) error {
+	cfg := conf.LoadConfig(configPath)
 	dbPath := cfg.Database.Path
-	db := gateways.ConnectDB(dbPath)
-	defer db.Close()
-	observability.DefaultLogger.Info("SQLite DB connected", "path", dbPath)
 
-	// --- Run migrations only if enabled ---
-	if cfg.Database.Migrations.RunOnStartup {
-        if err := gateways.RunMigrations(db,"./script/migrations"); err != nil {
-			log.Fatalf("migration failed: %v", err)
-		}
-		log.Println("migrations completed!")
-	} else {
-		log.Println("migrations skipped (run_on_startup=false)")
-	}
-	// After DB is initialized
-	metricsRepo, err := gateways.NewMetricsRepository(dbPath)
+	router, err := app.BuildRouter(dbPath, cfg.Database.Migrations.RunOnStartup)
 	if err != nil {
-		log.Fatalf("failed to initialize metrics repo: %v", err)
+		return err
 	}
 
-	observability.InitMetricsRepository(metricsRepo)
-
-	// --- Initialize router ---
-	router := mux.NewRouter()
-
-	// --- Observability: metrics endpoint ---
-	router.Handle("/metrics", observability.MetricsHandler()).Methods("GET")
-
-	// ----------------------
-	// v1: In-memory service
-	// ----------------------
-	v1Route := router.PathPrefix("/api/v1").Subrouter()
-
-	// v1 health check
-	v1Route.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		err := json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-		logError(err)
-	}).Methods("POST")
-
-	// v1 in-memory service
-	v1Service := controller.NewInMemoryRecordService()
-	v1Handler := apiV1.NewAPI(&v1Service)
-	v1Handler.CreateRoutes(v1Route)
-
-	// ----------------------
-	// v2: SQLite persistent service + feature flags
-	// ----------------------
-	v2Route := router.PathPrefix("/api/v2").Subrouter()
-
-	// require user identity for v2
-	v2Route.Use(observability.RequireUserContext)
-	v2Route.Use(observability.LoggingAndMetrics)
-
-	
-	// SQLite-backed v2 controller
-	v2Controller, err := controller.NewSQLiteRecordController(dbPath)
-	if err != nil {
-		log.Fatalf("failed to initialize v2 controller: %v", err)
-	}
-
-	// FeatureFlag service
-	flagService, err := controller.NewFeatureFlagController(dbPath)
-	if err != nil {
-		log.Fatalf("failed to initialize feature flag service: %v", err)
-	}
-
-	// Initialize v2 API
-	v2Handler := apiV2.NewAPI(v2Controller, flagService)
-	v2Handler.CreateRoutes(v2Route)
-
-	// ----------------------
-	// Start HTTP server
-	// ----------------------
-	port := os.Getenv("PORT")
+	port := envPort
 	if port == "" {
 		port = "8000"
 	}
 
-	address := "127.0.0.1:" + port
+	address := ":" + port
 
 	srv := &http.Server{
 		Handler:      router,
@@ -116,5 +36,11 @@ func main() {
 	}
 
 	observability.DefaultLogger.Info("server listening", "address", address)
-	log.Fatal(srv.ListenAndServe())
+	return srv.ListenAndServe()
+}
+
+func main() {
+	if err := RunServer("conf/config.yaml", os.Getenv("PORT")); err != nil {
+		log.Fatalf("failed to start server: %v", err)
+	}
 }

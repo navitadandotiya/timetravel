@@ -20,6 +20,14 @@ type SQLiteRecordService struct {
 	db *sql.DB
 }
 
+// define interface for the controller to allow testing with mocks
+type SQLiteRecordServiceInterface interface {
+	Get(int64) (*entity.PolicyholderRecord, error)
+	CreateOrUpdate(int64, map[string]string) (*entity.PolicyholderRecord, error)
+	GetVersion(int64, int) (map[string]string, error)
+	ListVersions(int64) ([]int, error)
+}
+
 // NewSQLiteRecordService initializes the service with DB connection
 func NewSQLiteRecordService(dbPath string) (*SQLiteRecordService, error) {
 	db, err := sql.Open("sqlite3", dbPath)

@@ -1,0 +1,26 @@
+services:
+  timetravel:
+    image: timetravel-timetravel
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./db:/app/db
+      - ./conf:/app/conf
+      - ./script:/app/script
+    networks:
+      - timetravel_default
+
+  api_test:
+    image: curlimages/curl:latest
+    depends_on:
+      - timetravel
+    networks:
+      - timetravel_default
+    volumes:
+       - ./test:/test
+
+    entrypoint: ["sh", "/test/test_v2_docker.sh"]
+
+networks:
+  timetravel_default:
+    external: true

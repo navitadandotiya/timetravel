@@ -244,20 +244,20 @@ timetravel/
 ├─ entity/
 │  └─ models.go             # DB models / structs
 ├─ controller/
-│  └─ record_controller.go  # business logic / orchestration
+│  └─ *_controller.go  # business logic / orchestration
 ├─ service/
-│  └─ record_service.go     # in-memory service / interface
+│  └─ *_service.go     # in-memory service / interface
 ├─ gateways/
-│  └─ db.go                 # SQLite DB connection
+│  └─ *.go                 # SQLite DB connection
 ├─ handler/
 │  ├─ v1/
 │  │  └─ api.go             # HTTP handlers for v1
 │  └─ v2/
 │     └─ handlers.go         # v2 (future) time-travel endpoints
 ├─ script/
-│  └─ create_tables.sql      # DB creation scripts
+│  └─ *_tables.sql      # DB creation scripts
 ├─ test/
-│  └─ test_v1.sh             # curl test scripts for Step 1
+│  └─ test_*.sh             # curl test scripts for Step 1
 ├─ db/
 │  └─ timetravel.db           # SQLite DB file
 ├─ go.mod
@@ -281,4 +281,93 @@ go run main.go
 ```bash
 ./test/test_v1.sh
 ```
+
+### Running the Server and Tests in Docker
+1. Build Docker Images
+```bash
+docker build -t timetravel-timetravel .
+```
+
+This builds the API server container with all dependencies, including jq for test scripts.
+
+2. Start the API Server with Docker Compose
+```bash
+docker-compose up -d
+```
+
+API server listens on localhost:8000 (v2 endpoints) and optionally 8080 (v1 endpoints).
+
+### Check logs in real time:
+```bash
+docker logs -f timetravel-timetravel-1
+```
+3. Run Automated v2 API Tests
+
+The test/test_v2_docker.sh script sends requests to all /api/v2 endpoints.
+
+### Run it inside Docker:
+```bash
+docker-compose run --rm api_test
+```
+
+### The script will execute:
+
+Health check
+
+Feature flag refresh
+
+Create / Update / Get record
+
+Retrieve specific version
+
+List all versions
+
+4. Capture Test Results to a File
+```bash
+docker-compose run --rm api_test > results.log
+```
+
+### Check the results:
+```bash
+cat results.log
+```
+
+Look for:
+
+{"ok":true} from health check
+
+{"status":"feature flags refreshed"}
+
+Created / updated record objects
+
+JSON responses for specific versions
+
+404 error for non-existent records
+
+### ⚠️ If you see errors like jq: not found, ensure your Docker image includes jq.
+
+5. Stop and Cleanup
+
+Stop the containers:
+```bash
+docker-compose down
+```
+
+Remove volumes manually if needed:
+```bash
+docker volume rm timetravel_timetravel_data
+```
+### Reference -- The Current API
+
+GET /api/v1/records/{id} – retrieve a record
+
+POST /api/v1/records/{id} – create/update a record
+
+GET /api/v2/records/{id}/versions – list all versions
+
+GET /api/v2/records/{id}/versions/{version} – get specific version
+
+POST /api/v2/records/{id} – create/update record with history
+
+All IDs must be positive integers.
 

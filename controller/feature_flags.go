@@ -9,8 +9,14 @@ import (
 
 // FeatureFlagController handles runtime feature flags
 type FeatureFlagController struct {
-	service *service.FeatureFlagService
+	service service.FeatureFlagServiceInterface
 }
+
+// constructor for tests
+func NewFeatureFlagControllerWithService(svc service.FeatureFlagServiceInterface) *FeatureFlagController {
+	return &FeatureFlagController{service: svc}
+}
+
 
 // NewFeatureFlagController initializes and loads all flags
 func NewFeatureFlagController(dbPath string) (*FeatureFlagController, error) {
@@ -22,6 +28,7 @@ func NewFeatureFlagController(dbPath string) (*FeatureFlagController, error) {
 
 	return &FeatureFlagController{service: svc}, nil
 }
+
 
 
 

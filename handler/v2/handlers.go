@@ -1,4 +1,4 @@
-package handler
+package v2
 
 import (
 	"encoding/json"
@@ -9,13 +9,30 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rainbowmga/timetravel/controller"
 	"github.com/rainbowmga/timetravel/observability"
+	"github.com/rainbowmga/timetravel/entity"
+	"context"
 )
+
+type RecordController interface {
+    UpsertRecord(ctx context.Context, id int64, data map[string]string) (entity.PolicyholderRecord, error)
+    GetRecord(ctx context.Context, id int64) (entity.PolicyholderRecord, error)
+    GetVersion(ctx context.Context, id int, version int) (map[string]string, error)
+    ListVersions(ctx context.Context, id int) ([]int, error)
+}
+
+type FeatureFlagService interface {
+    IsEnabled(ctx context.Context, key string) bool
+    Refresh() error
+}
 
 // API wraps the SQLite v2 controller/service
 type API struct {
-	Controller *controller.SQLiteRecordController
-	Flags      *controller.FeatureFlagController
+    Controller RecordController
+    Flags      FeatureFlagService
 }
+
+
+
 
 // NewAPI initializes the v2 API
 func NewAPI(c *controller.SQLiteRecordController, flags *controller.FeatureFlagController) *API {
@@ -141,6 +158,7 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
 
+// GetVersion to record for given versionID
 func (api *API) GetVersion(w http.ResponseWriter, r *http.Request) {
 	// Feature flag check: enable v2 record logic
 	if !api.Flags.IsEnabled(r.Context(),"enable_v2_api") {
@@ -166,6 +184,7 @@ func (api *API) GetVersion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListVersions to fetch all the versionIDs 
 func (api *API) ListVersions(w http.ResponseWriter, r *http.Request) {
 	// Feature flag check: enable v2 record logic
 	if !api.Flags.IsEnabled(r.Context(),"enable_v2_api") {

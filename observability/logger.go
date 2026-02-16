@@ -17,12 +17,23 @@ const (
 	LogError
 )
 
+// LoggerInterface defines methods for logging
+type LoggerInterface interface {
+	Debug(msg string, keysAndValues ...interface{})
+	Info(msg string, keysAndValues ...interface{})
+	Warn(msg string, keysAndValues ...interface{})
+	Error(msg string, keysAndValues ...interface{})
+}
+
 // Logger provides structured key=value logging for observability
 type Logger struct {
 	level  LogLevel
 	logger *log.Logger
 	mu     sync.Mutex
 }
+
+// Ensure Logger implements LoggerInterface
+var _ LoggerInterface = (*Logger)(nil)
 
 // NewLogger creates a logger with optional level (default: Info)
 func NewLogger(level LogLevel) *Logger {
@@ -36,8 +47,9 @@ func NewLogger(level LogLevel) *Logger {
 }
 
 // DefaultLogger is the package-level logger used by middleware and handlers
-var DefaultLogger = NewLogger(LogInfo)
+var DefaultLogger LoggerInterface = NewLogger(LogInfo)
 
+// internal log helper
 func (l *Logger) log(level LogLevel, levelStr, msg string, keysAndValues ...interface{}) {
 	if level < l.level {
 		return
@@ -63,6 +75,7 @@ func (l *Logger) Warn(msg string, keysAndValues ...interface{}) { l.log(LogWarn,
 // Error logs at error level
 func (l *Logger) Error(msg string, keysAndValues ...interface{}) { l.log(LogError, "ERROR", msg, keysAndValues...) }
 
+// helper to stringify any value
 func stringify(v interface{}) string {
 	switch s := v.(type) {
 	case string:

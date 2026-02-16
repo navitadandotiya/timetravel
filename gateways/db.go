@@ -2,70 +2,78 @@ package gateways
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
-	"fmt"
-	"io/ioutil"
 	"path/filepath"
+
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// ConnectDB opens a SQLite connection and ensures tables exist
-func ConnectDB(path string) *sql.DB {
-	// Create DB dir if missing
-	if _, err := os.Stat("db"); os.IsNotExist(err) {
-		os.Mkdir("db", os.ModePerm)
-	}
-
+// ConnectDB opens a SQLite connection and creates tables.
+// If sqlFilePath is empty, skips reading a file (for in-memory testing)
+func ConnectDB(path, sqlFilePath string) *sql.DB {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		log.Fatalf("failed to open SQLite DB: %v", err)
 	}
 
-	// Run table creation statements
-	tableSQL, err := os.ReadFile("script/create_v2_tables.sql")
-	if err != nil {
-		log.Fatalf("failed to read create_v2_tables.sql: %v", err)
-	}
+	// If a SQL file path is provided, read and execute it
+	if sqlFilePath != "" {
+		content, err := os.ReadFile(sqlFilePath)
+		if err != nil {
+			log.Fatalf("failed to read %s: %v", sqlFilePath, err)
+		}
 
-	_, err = db.Exec(string(tableSQL))
-	if err != nil {
-		log.Fatalf("failed to create tables: %v", err)
+		if _, err := db.Exec(string(content)); err != nil {
+			log.Fatalf("failed to create tables: %v", err)
+		}
 	}
 
 	return db
 }
 
-func RunMigrations(db *sql.DB, migrationsDir string) error {
-	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sql"))
+// RunMigrations executes all SQL files in the directory, sorted by name
+func RunMigrations(db *sql.DB, migrationsPath string) error {
+	files, err := os.ReadDir(migrationsPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read migrations dir: %w", err)
 	}
 
 	for _, file := range files {
-		version := filepath.Base(file)
-
-		var exists string
-		err := db.QueryRow(
-			"SELECT version FROM schema_migrations WHERE version = ?",
-			version,
-		).Scan(&exists)
-
-		if err == nil {
-			log.Printf("migration already applied: %s", version)
+		if file.IsDir() {
 			continue
 		}
 
-		sqlBytes, err := ioutil.ReadFile(file)
+		version := file.Name()
+
+		_, err := db.Exec(`
+							CREATE TABLE IF NOT EXISTS schema_migrations (
+    							version TEXT PRIMARY KEY,
+    							applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+							);
+						`)
 		if err != nil {
-			return err
+   			 return fmt.Errorf("failed to create schema_migrations: %w", err)
 		}
 
-		log.Printf("applying migration: %s", version)
+		// Skip already applied migrations
+		var exists int
+		err = db.QueryRow("SELECT 1 FROM schema_migrations WHERE version = ?", version).Scan(&exists)
+		if err == nil {
+			continue // already applied
+		} else if err != sql.ErrNoRows {
+			return fmt.Errorf("failed to check migration %s: %w", version, err)
+		}
 
-		_, err = db.Exec(string(sqlBytes))
+		path := filepath.Join(migrationsPath, version)
+		content, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("failed migration %s: %w", version, err)
+			return fmt.Errorf("failed to read migration %s: %w", version, err)
+		}
+
+		if _, err := db.Exec(string(content)); err != nil {
+			return fmt.Errorf("failed to execute migration %s: %w", version, err)
 		}
 	}
 

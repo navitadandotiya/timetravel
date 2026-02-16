@@ -60,6 +60,7 @@ func LoggingAndMetrics(next http.Handler) http.Handler {
 	})
 }
 
+// Request validation for v2 API
 func RequireUserContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userHeader := r.Header.Get("X-User-ID")

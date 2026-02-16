@@ -2,5 +2,7 @@
 
 database:
   path: ./db/timetravel.db
+
+
   migrations:
     run_on_startup: true

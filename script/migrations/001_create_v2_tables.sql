@@ -1,48 +1,87 @@
 PRAGMA foreign_keys = OFF;
-BEGIN TRANSACTION;
 
 --------------------------------------------------
--- MIGRATION VERSION TRACKING
+-- FEATURE FLAGS
 --------------------------------------------------
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version TEXT PRIMARY KEY,
-    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS feature_flags (
+    flag_key TEXT PRIMARY KEY,
+    enabled BOOLEAN NOT NULL,
+    description TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    rollout_percentage INTEGER DEFAULT 100
 );
 
+INSERT INTO feature_flags(flag_key, enabled, description, updated_at, rollout_percentage)
+VALUES
+('enable_v2_api', 1, 'Enable version 2 API', CURRENT_TIMESTAMP, 100),
+('enable_audit_logging', 1, 'Audit history logging', CURRENT_TIMESTAMP, 100),
+('enable_metrics', 1, 'Observability metrics', CURRENT_TIMESTAMP, 100)
+ON CONFLICT(flag_key) DO UPDATE SET
+    enabled = excluded.enabled,
+    description = excluded.description,
+    updated_at = CURRENT_TIMESTAMP,
+    rollout_percentage = excluded.rollout_percentage;
+
 --------------------------------------------------
--- POLICYHOLDER (NEW)
+-- POLICYHOLDER TABLE
 --------------------------------------------------
 CREATE TABLE IF NOT EXISTS policyholders (
     policyholder_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    email TEXT,
-    country_code TEXT,
+    email TEXT NOT NULL,
+    country_code TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 --------------------------------------------------
--- EXTEND POLICYHOLDER RECORDS (V1 → V2)
+-- POLICYHOLDER RECORDS (V2)
 --------------------------------------------------
+-- migrate data if old table exists
+DROP TABLE IF EXISTS policyholder_records_old;
+ALTER TABLE policyholder_records RENAME TO policyholder_records_old;
 
---ALTER TABLE policyholder_records ADD COLUMN policyholder_id INTEGER;
---ALTER TABLE policyholder_records ADD COLUMN version INTEGER DEFAULT 1;
+CREATE TABLE IF NOT EXISTS policyholder_records (
+    record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policyholder_id INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(policyholder_id) REFERENCES policyholders(policyholder_id) ON DELETE CASCADE
+);
+
+-- copy data from old table if exists
+INSERT INTO policyholder_records (record_id, policyholder_id, data, version, created_at, updated_at)
+SELECT record_id, policyholder_id, data, 1, created_at, updated_at
+FROM policyholder_records_old;
+
+DROP TABLE IF EXISTS policyholder_records_old;
 
 CREATE INDEX IF NOT EXISTS idx_records_version
 ON policyholder_records(record_id, version);
 
 --------------------------------------------------
--- AUDIT HISTORY (VERSION SNAPSHOTS)
+-- AUDIT HISTORY TABLE
 --------------------------------------------------
+DROP TABLE IF EXISTS audit_history_old;
+ALTER TABLE audit_history RENAME TO audit_history_old;
+
 CREATE TABLE IF NOT EXISTS audit_history (
     audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_id INTEGER NOT NULL,
     version INTEGER NOT NULL,
     data TEXT NOT NULL,
-    changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     event_type TEXT NOT NULL,
-    FOREIGN KEY(record_id) REFERENCES policyholder_records(record_id)
+    changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(record_id) REFERENCES policyholder_records(record_id) ON DELETE CASCADE
 );
+
+INSERT INTO audit_history (audit_id, record_id, version, data, event_type, changed_at)
+SELECT audit_id, record_id, audit_id, data, event_type, changed_at
+FROM audit_history_old;
+
+DROP TABLE IF EXISTS audit_history_old;
 
 CREATE INDEX IF NOT EXISTS idx_audit_record
 ON audit_history(record_id);
@@ -51,14 +90,15 @@ CREATE INDEX IF NOT EXISTS idx_audit_time
 ON audit_history(record_id, changed_at);
 
 --------------------------------------------------
--- EVENT LOG (TRACEABILITY)
+-- EVENT LOG
 --------------------------------------------------
 CREATE TABLE IF NOT EXISTS event_logs (
     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_id INTEGER,
     action TEXT NOT NULL,
     details TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(record_id) REFERENCES policyholder_records(record_id) ON DELETE CASCADE
 );
 
 --------------------------------------------------
@@ -74,46 +114,18 @@ CREATE TABLE IF NOT EXISTS observability_metrics (
 );
 
 --------------------------------------------------
--- FEATURE FLAGS (ROLL OUT CONTROL)
+-- SCHEMA MIGRATION TRACKING
 --------------------------------------------------
-CREATE TABLE IF NOT EXISTS feature_flags (
-    flag_key TEXT PRIMARY KEY,
-    enabled BOOLEAN NOT NULL,
-    description TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    rollout_percentage INTEGER DEFAULT 100
-);
-
-
---------------------------------------------------
--- API VERSION CONFIGURATION
---------------------------------------------------
-CREATE TABLE IF NOT EXISTS api_version_config (
+CREATE TABLE IF NOT EXISTS schema_migrations (
     version TEXT PRIMARY KEY,
-    is_active BOOLEAN NOT NULL,
-    rollout_percentage INTEGER DEFAULT 100,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
---------------------------------------------------
--- RECORD MIGRATION APPLIED
---------------------------------------------------
-INSERT OR IGNORE INTO schema_migrations(version)
-VALUES ('001_time_travel_v2');
+CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY);
 
-COMMIT;
+INSERT INTO schema_migrations(version)
+VALUES('001_create_users.sql')
+ON CONFLICT(version) DO NOTHING;
+
+
 PRAGMA foreign_keys = ON;
-
-
-INSERT INTO feature_flags(flag_key, enabled, description, updated_at)
-VALUES
-('enable_v2_api', 1, 'Enable version 2 API', CURRENT_TIMESTAMP),
-('enable_audit_logging', 1, 'Audit history logging', CURRENT_TIMESTAMP),
-('enable_metrics', 1, 'Observability metrics', CURRENT_TIMESTAMP)
-ON CONFLICT(flag_key)
-DO UPDATE SET
-    enabled = excluded.enabled,
-    description = excluded.description,
-    updated_at = CURRENT_TIMESTAMP;
-
---verification SELECT enabled FROM feature_flags WHERE flag_key = 'enable_v2_api';

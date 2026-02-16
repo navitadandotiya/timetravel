@@ -29,6 +29,7 @@ type RecordService interface {
 	UpdateRecord(ctx context.Context, id int, updates map[string]*string) (entity.Record, error)
 }
 
+
 // InMemoryRecordService is an in-memory implementation of RecordService.
 type InMemoryRecordService struct {
 	data map[int]entity.Record

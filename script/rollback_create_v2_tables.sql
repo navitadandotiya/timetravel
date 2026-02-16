@@ -37,7 +37,6 @@ DROP TABLE IF EXISTS audit_history;
 DROP TABLE IF EXISTS event_logs;
 DROP TABLE IF EXISTS observability_metrics;
 DROP TABLE IF EXISTS feature_flags;
-DROP TABLE IF EXISTS api_version_config;
 DROP TABLE IF EXISTS policyholders;
 
 --------------------------------------------------

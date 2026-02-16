@@ -9,8 +9,16 @@ import (
 	"github.com/rainbowmga/timetravel/observability"
 )
 
+// define interface for the controller to allow testing with mocks
+type SQLiteRecordServiceInterface interface {
+	Get(int64) (*entity.PolicyholderRecord, error)
+	CreateOrUpdate(int64, map[string]string) (*entity.PolicyholderRecord, error)
+	GetVersion(int64, int) (map[string]string, error)
+	ListVersions(int64) ([]int, error)
+}
+
 type SQLiteRecordController struct {
-	service *service.SQLiteRecordService
+	service SQLiteRecordServiceInterface
 }
 
 //
@@ -23,6 +31,20 @@ func NewSQLiteRecordController(dbPath string) (*SQLiteRecordController, error) {
 		return nil, err
 	}
 	return &SQLiteRecordController{service: svc}, nil
+}
+
+// NewSQLiteRecordControllerForTest allows injecting a mock service for testing
+func NewSQLiteRecordControllerForTest(svc SQLiteRecordServiceInterface) *SQLiteRecordController {
+	return &SQLiteRecordController{
+		service: svc,
+	}
+}
+
+// NewSQLiteRecordControllerForTest allows injecting a mock or in-memory service
+func NewSQLiteRecordControllerInMemory(service SQLiteRecordServiceInterface) *SQLiteRecordController {
+	return &SQLiteRecordController{
+		service: service,
+	}
 }
 
 //
@@ -44,12 +66,10 @@ func (c *SQLiteRecordController) GetRecord(ctx context.Context, id int64) (entit
 	return *rec, nil
 }
 
-
 //
 // UPSERT (CREATE OR UPDATE)
 // used by handler to keep logic simple & generic
 //
-
 func (c *SQLiteRecordController) UpsertRecord(
 	ctx context.Context,
 	policyholderID int64,
@@ -62,7 +82,7 @@ func (c *SQLiteRecordController) UpsertRecord(
 
 	rec, err := c.service.CreateOrUpdate(policyholderID, data)
 	if err != nil {
-		observability.DefaultLogger.Error(" CreateOrUpdate error %v",err);
+		observability.DefaultLogger.Error(" CreateOrUpdate error %v", err)
 		return entity.PolicyholderRecord{}, err
 	}
 
@@ -73,7 +93,6 @@ func (c *SQLiteRecordController) UpsertRecord(
 // UPDATE RECORD (PATCH-style)
 // supports deletion via nil values
 //
-
 func (c *SQLiteRecordController) UpdateRecord(
 	ctx context.Context,
 	id int,
@@ -105,7 +124,7 @@ func (c *SQLiteRecordController) UpdateRecord(
 
 	updated, err := c.service.CreateOrUpdate(int64(id), rec.Data)
 	if err != nil {
-		observability.DefaultLogger.Error(" updated error %v",err);
+		observability.DefaultLogger.Error(" updated error %v", err)
 		return entity.PolicyholderRecord{}, err
 	}
 

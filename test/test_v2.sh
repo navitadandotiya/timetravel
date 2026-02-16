@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BASE_URL="http://127.0.0.1:8000/api/v2"
-POLICYHOLDER_ID=1
+POLICYHOLDER_ID=7
 USER_ID="10"
 
 echo "=== v2 Health Check ==="
@@ -49,3 +49,7 @@ curl -s "$BASE_URL/records/$POLICYHOLDER_ID/versions" \
 echo -e "\n"
 
 echo "=== Test Completed ==="
+echo -e "\n"
+curl -X GET "http://localhost:8000/metrics"  | grep -v '^#' | grep 'http_requests_total'
+echo -e "\n"
+echo "=== Metrics Completed ==="
