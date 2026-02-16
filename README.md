@@ -292,7 +292,10 @@ This builds the API server container with all dependencies, including jq for tes
 
 2. Start the API Server with Docker Compose
 ```bash
-docker-compose up -d
+docker-compose down -v                                                                         
+docker builder prune -a -f
+docker-compose build --no-cache
+docker-compose up
 ```
 
 API server listens on localhost:8000 (v2 endpoints) and optionally 8080 (v1 endpoints).

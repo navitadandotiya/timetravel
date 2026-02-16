@@ -5,6 +5,8 @@ type Record struct {
 	Data map[string]string `json:"data"`
 }
 
+
+
 func (d *Record) Copy() Record {
 	values := d.Data
 
