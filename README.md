@@ -374,3 +374,88 @@ POST /api/v2/records/{id} – create/update record with history
 
 All IDs must be positive integers.
 
+### ⏳ If I Had More Time…
+
+While the current implementation is production-ready for the scope of this take-home project, there are several areas I would further enhance given additional time:
+
+### 1️⃣ Database & Scalability
+
+Migrate from SQLite to PostgreSQL for better concurrent write performance and horizontal scalability.
+
+Introduce connection pooling and transaction boundary improvements.
+
+Add optimistic locking to prevent version race conditions under high concurrency.
+
+### 2️⃣ Observability Enhancements
+
+Integrate OpenTelemetry for distributed tracing.
+
+Add structured logging with correlation/request IDs.
+
+Add error classification metrics (4xx vs 5xx breakdown).
+
+Create a sample Grafana dashboard configuration.
+
+### 3️⃣ API & Validation Improvements
+
+Introduce request schema validation using JSON schema or middleware validation layer.
+
+Add rate limiting to prevent abuse.
+
+Implement pagination for version history endpoints.
+
+Add idempotency keys for safe retries on POST requests.
+
+### 4️⃣ Testing Improvements
+
+Add full integration tests using an in-memory SQLite database.
+
+Add concurrency stress tests.
+
+Add chaos testing scenarios (DB lock simulation, feature flag toggle under load).
+
+Add CI pipeline with automated coverage enforcement.
+
+### 5️⃣ Security Hardening
+
+Add authentication & authorization middleware.
+
+Enforce structured audit compliance logging.
+
+Add input sanitization hardening for edge-case payloads.
+
+Introduce secret management via environment variables.
+
+### ### 6️⃣ Production Readiness Improvements
+
+Provide Kubernetes deployment manifests.
+
+Add health check differentiation (liveness vs readiness).
+
+Implement blue/green or canary deployment automation.
+
+Add automated schema migration tooling.
+
+### 7️⃣ Architecture Evolution
+
+Separate feature flag service into its own module.
+
+Extract observability into a shared internal package.
+
+Introduce domain-driven structure separation for better long-term maintainability.
+
+### 🎯 Design Philosophy
+
+The current implementation focuses on:
+
+Simplicity
+
+Correctness
+
+Observability
+
+Safe rollout
+
+Clear operational control
+
+Given more time, the next iteration would focus on scalability, automation, and distributed system resilience.
